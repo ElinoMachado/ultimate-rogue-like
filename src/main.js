@@ -48,8 +48,12 @@ function applyBuffsToPlayer(player, buffsSelected) {
   player.buffs.poder = poderBuff;
 
   player.damage = Math.round(base.damage * (1 + poderBuff.dmg));
-  player.maxHp = Math.round(base.maxHp * (1 + poderBuff.hp));
-  player.hp = Math.min(player.hp ?? player.maxHp, player.maxHp);
+  const newMaxHp = Math.round(base.maxHp * (1 + poderBuff.hp));
+  const wasIncrease = newMaxHp > (player.maxHp ?? 0);
+  player.maxHp = newMaxHp;
+  player.hp = wasIncrease
+    ? newMaxHp
+    : Math.min(player.hp ?? newMaxHp, newMaxHp);
   player.speed = Math.round(base.speed * (1 + poderBuff.speed));
 
   // --- Arcana ---
@@ -236,24 +240,43 @@ function showSkillReveal() {
   const arcanaBoost = selectedBuffs.arcana.bonus + 1;
 
   const skill = {
+    id: skillTemplate.id,
     name: skillTemplate.baseName,
+    type: skillTemplate.type,
+    rarity, // ✅ agora salvo na skill
+    level: 1, // ✅ nível inicial
     damage: Math.round(baseData.damage * arcanaBoost),
     manaCost: baseData.manaCost,
     cooldown: baseData.cooldown,
     effect: baseData.effect,
     effects: baseData.effects || [],
+    cooldownCounter: 0,
   };
 
-  selectedSkill = { ...skill, rarity, cooldownCounter: 0 };
+  selectedSkill = skill;
   playerEntity.skills = [selectedSkill];
 
   revealSkillCard(skill, rarity, () => showPassiveReveal());
 }
 
 function showPassiveReveal() {
-  const passive = passives[Math.floor(Math.random() * passives.length)];
-  revealPassiveCard(passive, () => {
-    applyPassiveToPlayer(playerEntity, passive);
+  const base = passives[Math.floor(Math.random() * passives.length)];
+  const rarity = getRarityFromArcana(
+    selectedBuffs.arcana.level,
+    playerEntity.luck
+  );
+
+  const selectedPassive = {
+    ...base,
+    level: 1, // ✅ nível inicial
+    rarity, // ✅ raridade para exibição
+  };
+
+  // guarda no jogador para a UI da batalha poder mostrar
+  playerEntity.passive = selectedPassive;
+
+  revealPassiveCard(selectedPassive, () => {
+    applyPassiveToPlayer(playerEntity, selectedPassive);
     startBattle();
   });
 }
@@ -436,7 +459,8 @@ function tryUpgradeBuffAndRetry(key) {
   playerEntity.mp = playerEntity.maxMp;
   playerEntity.lives = Math.max(0, (playerEntity.lives ?? 0) - 1);
 
-  updateHUD(playerEntity, progression, levelSystem);
+  renderHUD(playerEntity, selectedBuffs, progression, levelSystem);
+
   retrySameStage();
 }
 
@@ -693,18 +717,21 @@ function createSkillFromTemplate(template, arcanaLevel) {
   const rarity = getRarityFromArcana(arcanaLevel, playerEntity.luck);
   const baseData = template.rarities[rarity];
 
+  // use o multiplicador já calculado nos buffs do player
+  const arcanaBoost = playerEntity.arcanaMultiplier ?? 1;
+
   return {
     id: template.id,
     name: template.baseName,
     type: template.type,
     rarity,
-    damage: baseData.damage,
+    level: 1,
+    damage: Math.round(baseData.damage * arcanaBoost), // ✅ aplica Arcana aqui
     manaCost: baseData.manaCost,
     cooldown: baseData.cooldown,
     effect: baseData.effect,
     effects: baseData.effects || [],
     cooldownCounter: 0,
-    level: 1,
   };
 }
 

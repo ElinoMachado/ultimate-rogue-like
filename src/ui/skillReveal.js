@@ -74,14 +74,16 @@ export function revealSkillCard(skill, rarity, onConfirm) {
         r.color
       }; box-shadow: ${r.glow}">
         <div class="card-inner flipped">
-          <div class="card-back" style="background:${r.color}22;">
-            <h2 style="color:${r.color}; margin-bottom:8px;">${skill.name}</h2>
-            <p><strong>Raridade:</strong> ${rarity.toUpperCase()}</p>
-            <p><strong>Dano:</strong> ${skill.damage}</p>
-            <p><strong>Mana:</strong> ${skill.manaCost}</p>
-            <p><strong>Cooldown:</strong> ${skill.cooldown} turno(s)</p>
-            <p><strong>Efeito:</strong> ${skill.effect || "—"}</p>
-          </div>
+         <div class="card-back" style="background:${r.color}22;">
+  <h2 style="color:${r.color}; margin-bottom:8px;">${skill.name}</h2>
+  <p><strong>Raridade:</strong> ${rarity.toUpperCase()}</p>
+  <p><strong>Nível:</strong> ${skill.level ?? 1}</p>
+  <p><strong>Dano:</strong> ${skill.damage}</p>
+  <p><strong>Mana:</strong> ${skill.manaCost}</p>
+  <p><strong>Cooldown:</strong> ${skill.cooldown} turno(s)</p>
+  <p><strong>Efeito:</strong> ${skill.effect || "—"}</p>
+</div>
+
         </div>
       </div>
 
@@ -123,9 +125,14 @@ export function revealPassiveCard(passive, onConfirm) {
       <div class="card reveal-card" style="border: 3px solid #22c55e; box-shadow: 0 0 18px #22c55e66">
         <div class="card-inner flipped">
           <div class="card-back" style="background:#22c55e22;">
-            <h2 style="color:#22c55e; margin-bottom:8px;">${passive.name}</h2>
-            <p style="opacity:.9">${passive.description}</p>
-          </div>
+  <h2 style="color:#22c55e; margin-bottom:8px;">${passive.name}</h2>
+  <p><strong>Raridade:</strong> ${(
+    passive.rarity || "common"
+  ).toUpperCase()}</p>
+  <p><strong>Nível:</strong> ${passive.level ?? 1}</p>
+  <p style="opacity:.9">${passive.description || "—"}</p>
+</div>
+
         </div>
       </div>
 

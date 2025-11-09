@@ -41,7 +41,7 @@ export function startBattleScene(playerEntity, skill, callback) {
   currentSkill = skill;
   onBattleEnd = callback;
 
-  enemy = createEnemyForLevel(player.level || 1);
+  enemy = createEnemyForLevel(progression.currentStage || 1);
   prepareEntity(player);
   prepareEntity(enemy);
   battleRunning = true;

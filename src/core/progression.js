@@ -24,9 +24,13 @@ export const progression = {
   calcRewardsPreview(player, stage = this.currentStage) {
     const { xpBase, goldBase } = this.calcRewardBase(stage);
     const wealth = Number(player?.wealthBonus ?? 0);
+    const luck = Number(player?.luck ?? 0);
+    // mesmo modelo do drop: +0,2% por ponto de sorte (cap em +22%)
+    const luckRate = Math.min(0.22, luck * 0.002);
+    const totalRate = wealth + luckRate;
 
-    const xpBonus = Math.round(xpBase * wealth);
-    const goldBonus = Math.round(goldBase * wealth);
+    const xpBonus = Math.round(xpBase * totalRate);
+    const goldBonus = Math.round(goldBase * totalRate);
 
     return {
       stage,

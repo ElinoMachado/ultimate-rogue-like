@@ -90,7 +90,8 @@ export function renderBattleUI(player, enemy) {
     manaCost: 0,
     cooldown: 0,
   };
-
+  const passive =
+    player.passive || (player.passives && player.passives[0]) || null;
   // 🔁 Fonte única da verdade (usa progression)
   const fixed = progression.calcRewardsPreview(player);
 
@@ -124,10 +125,12 @@ export function renderBattleUI(player, enemy) {
       ${renderEntity("enemy", enemy)}
     </main>
 
-    <footer class="battle-footer">
-      ${renderSkillCard(skill)}
-      ${renderActionButtons(player, skill)}
-    </footer>
+   <footer class="battle-footer">
+  ${renderSkillCard(skill)}
+  ${passive ? renderPassiveCard(passive) : ""}
+  ${renderActionButtons(player, skill)}
+</footer>
+
   `;
 }
 
@@ -195,11 +198,28 @@ function renderEntity(type, entity) {
     </div>
   `;
 }
+function renderPassiveCard(passive) {
+  const rarityText = (passive.rarity || "common").toString().toUpperCase();
+  const levelText = passive.level != null ? passive.level : 1;
+  return `
+    <div class="skill-info-card" style="right:16px; left:auto;">
+      <h3>${passive.name}</h3>
+      <p><strong>Raridade:</strong> ${rarityText}</p>
+      <p><strong>Nível:</strong> ${levelText}</p>
+      <p><strong>Tipo:</strong> Passiva</p>
+      <p><strong>Efeito:</strong> ${passive.description || "—"}</p>
+    </div>
+  `;
+}
 
 function renderSkillCard(skill) {
+  const rarityText = (skill.rarity || "common").toString().toUpperCase();
+  const levelText = skill.level != null ? skill.level : 1;
   return `
-    <div class="skill-info-card">
+    <div class="skill-info-card" style="left:16px; right:auto;">
       <h3>${skill.name}</h3>
+      <p><strong>Raridade:</strong> ${rarityText}</p>
+      <p><strong>Nível:</strong> ${levelText}</p>
       <p><strong>Dano:</strong> ${skill.damage}</p>
       <p><strong>Mana:</strong> ${skill.manaCost}</p>
       <p><strong>Cooldown:</strong> ${skill.cooldown} turnos</p>
