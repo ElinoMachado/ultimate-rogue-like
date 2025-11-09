@@ -1,51 +1,36 @@
-// src/data/passives.js
 export const passives = [
   {
-    id: "passive_regen_plus",
-    name: "Regeneração Potente",
-    rarity: "rare",
-    description: "+2% de regen de HP e +2% de regen de MP por turno.",
+    id: "passive_regen_boost",
+    name: "Energia Renovada",
+    description: "Regeneração +3% de HP e MP no início do seu turno.",
     apply(player) {
-      player.passiveRegenBonusHp = (player.passiveRegenBonusHp || 0) + 0.02;
-      player.passiveRegenBonusMp = (player.passiveRegenBonusMp || 0) + 0.02;
+      player.regenHpBonus = (player.regenHpBonus || 0) + 0.03;
+      player.regenMpBonus = (player.regenMpBonus || 0) + 0.03;
     },
   },
   {
-    id: "passive_battle_rhythm",
-    name: "Ritmo de Batalha",
-    rarity: "common",
-    description: "Começa cada batalha com +20 de gauge de velocidade.",
+    id: "passive_mana_eff",
+    name: "Conservador de Mana",
+    description: "Habilidades custam 20% menos mana.",
     apply(player) {
-      player.startGaugeBonus = Math.max(player.startGaugeBonus || 0, 20);
+      player.manaCostMult = 0.8;
     },
   },
   {
-    id: "passive_mana_efficiency",
-    name: "Eficiência Arcana",
-    rarity: "super",
-    description: "Habilidades custam -20% de mana.",
+    id: "passive_extra_life",
+    name: "Determinação",
+    description: "Ganha +1 vida extra.",
     apply(player) {
-      player.manaCostMultiplier = (player.manaCostMultiplier || 1) * 0.8;
+      player.lives = (player.lives || 0) + 1;
     },
   },
   {
-    id: "passive_steel_skin",
-    name: "Pele de Aço",
-    rarity: "rare",
-    description: "+10% vida máxima (aplicado ao valor base).",
+    id: "passive_crit_focus",
+    name: "Foco Preciso",
+    description: "+5% de chance crítica e +10% de dano crítico.",
     apply(player) {
-      if (!player.baseDynamic) return;
-      player.baseDynamic.maxHp = Math.round(player.baseDynamic.maxHp * 1.1);
-      player.recalcFromBuffs?.();
-    },
-  },
-  {
-    id: "passive_killer_instinct",
-    name: "Instinto Assassino",
-    rarity: "legendary",
-    description: "+5% chance de crítico.",
-    apply(player) {
-      player.critChance = (player.critChance || 0) + 5;
+      player.critChance += 5;
+      player.critDamage += 0.1;
     },
   },
 ];

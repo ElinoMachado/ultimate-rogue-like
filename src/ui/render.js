@@ -1,5 +1,4 @@
 // src/ui/render.js
-import { playSound } from "./sound.js";
 import { progression } from "../core/progression.js";
 
 /* ================================
@@ -92,7 +91,8 @@ export function renderBattleUI(player, enemy) {
     cooldown: 0,
   };
 
-  const fixed = getStageRewardFixed(player);
+  // 🔁 Fonte única da verdade (usa progression)
+  const fixed = progression.calcRewardsPreview(player);
 
   app.innerHTML = `
     <header class="game-header"><h1>RPG Arena</h1></header>
@@ -100,7 +100,7 @@ export function renderBattleUI(player, enemy) {
     <section class="battle-meta">
       <div class="meta-left">
         <span class="chip chip-stage">🎯 Fase <strong>${
-          progression.currentStage
+          fixed.stage
         }</strong></span>
       </div>
       <div class="meta-right">
@@ -275,9 +275,8 @@ function makeBar(type, label, value, max) {
     <div class="bar ${type}">
       <span class="label">${label}</span>
       <div class="bar-fill-wrapper">
-        <div class="bar-fill" style="width:${pct}%; background:${
-    colors[type]
-  }" data-value="${value}" data-max="${max}"></div>
+        <div class="bar-fill" style="width:${pct}%; background:${colors[type]}"
+             data-value="${value}" data-max="${max}"></div>
       </div>
       <span class="bar-text">${Math.floor(value)} / ${Math.floor(max)}</span>
     </div>
@@ -288,12 +287,7 @@ function makeBar(type, label, value, max) {
  * Ícones de status por tipo.
  */
 function getStatusEmoji(name) {
-  const map = {
-    stun: "💫",
-    bleed: "🩸",
-    poison: "☠️",
-    shield: "🛡️",
-  };
+  const map = { stun: "💫", bleed: "🩸", poison: "☠️", shield: "🛡️" };
   return map[name] || "⚙️";
 }
 
@@ -303,33 +297,4 @@ function getStatusEmoji(name) {
 function safeInt(v, d = 0) {
   const n = Number(v);
   return Number.isFinite(n) ? Math.floor(n) : d;
-}
-
-/**
- * 📌 Prévia fixa de recompensa destacando *apenas* a Riqueza.
- * Base:
- *   XP = 50 + 10 * stage
- *   Gold = 30 + 5 * stage
- * Bônus:
- *   bonus = round(base * wealthBonus)
- */
-function getStageRewardFixed(player) {
-  const stage = progression.currentStage || 1;
-  const xpBase = 50 + stage * 10;
-  const goldBase = 30 + stage * 5;
-
-  const wealthBonus = Number(player.wealthBonus ?? 0);
-
-  const xpBonus = Math.round(xpBase * wealthBonus);
-  const goldBonus = Math.round(goldBase * wealthBonus);
-
-  return {
-    stage,
-    xpBase,
-    xpBonus,
-    xpTotal: xpBase + xpBonus,
-    goldBase,
-    goldBonus,
-    goldTotal: goldBase + goldBonus,
-  };
 }

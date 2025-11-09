@@ -1,15 +1,41 @@
 import { playSound } from "./sound.js";
 
+/** injeta CSS uma única vez */
+if (!document.getElementById("skill-reveal-style")) {
+  const style = document.createElement("style");
+  style.id = "skill-reveal-style";
+  style.textContent = `
+    @keyframes fadeIn {
+      from { opacity: 0; transform: scale(0.97); }
+      to { opacity: 1; transform: scale(1); }
+    }
+    @keyframes fadeOut {
+      from { opacity: 1; transform: scale(1); }
+      to { opacity: 0; transform: scale(1.03); }
+    }
+    .skill-reveal h2.screen-title {
+      color: #fff;
+      text-shadow: 0 0 12px rgba(255,255,255,0.2);
+    }
+    .reveal-card { animation: cardEnter 0.8s ease; }
+    @keyframes cardEnter {
+      from { opacity: 0; transform: translateY(30px) rotateY(-10deg); }
+      to { opacity: 1; transform: translateY(0) rotateY(0); }
+    }
+    button#btn-proceed.clicked {
+      filter: brightness(1.3);
+      transform: scale(0.95);
+    }
+  `;
+  document.head.appendChild(style);
+}
+
 /**
- * ================================
- * ✨ Animação de Revelação de Habilidade
- * ================================
- * Exibe a carta de uma skill com estilo e som condizente à raridade.
+ * ✨ Revela a carta da habilidade
  */
 export function revealSkillCard(skill, rarity, onConfirm) {
   const container = document.getElementById("app");
 
-  // 🎨 Paleta de raridades
   const rarityStyle = {
     common: {
       color: "#bbb",
@@ -37,10 +63,8 @@ export function revealSkillCard(skill, rarity, onConfirm) {
       sound: "rarity-mythic.mp3",
     },
   };
-
   const r = rarityStyle[rarity] ?? rarityStyle.common;
 
-  // 🧱 Estrutura da tela
   container.innerHTML = `
     <header class="game-header"><h1>RPG Arena</h1></header>
     <main class="screen-center skill-reveal" style="animation: fadeIn 0.5s ease;">
@@ -56,19 +80,17 @@ export function revealSkillCard(skill, rarity, onConfirm) {
             <p><strong>Dano:</strong> ${skill.damage}</p>
             <p><strong>Mana:</strong> ${skill.manaCost}</p>
             <p><strong>Cooldown:</strong> ${skill.cooldown} turno(s)</p>
-            <p><strong>Efeito:</strong> ${skill.effect}</p>
+            <p><strong>Efeito:</strong> ${skill.effect || "—"}</p>
           </div>
         </div>
       </div>
 
-      <button id="btn-proceed" class="btn-primary">Continuar (Batalha)</button>
+      <button id="btn-proceed" class="btn-primary">Continuar</button>
     </main>
   `;
 
-  // ✨ Som de raridade
   playSound(r.sound);
 
-  // 🎬 Animação de aparição do botão
   const btn = container.querySelector("#btn-proceed");
   btn.style.opacity = "0";
   btn.style.transition = "opacity 0.6s ease, transform 0.4s ease";
@@ -77,17 +99,11 @@ export function revealSkillCard(skill, rarity, onConfirm) {
     btn.style.transform = "translateY(-4px)";
   }, 800);
 
-  // 🖱️ Ação ao prosseguir (fade APENAS no wrapper interno, não no #app!)
   btn.addEventListener("click", () => {
     btn.classList.add("clicked");
     playSound("click.mp3");
-
     const screen = container.querySelector(".skill-reveal");
-    if (screen) {
-      screen.style.animation = "fadeOut 0.5s forwards";
-    }
-
-    // Espera o fade terminar e só então chama onConfirm
+    if (screen) screen.style.animation = "fadeOut 0.5s forwards";
     setTimeout(() => {
       if (typeof onConfirm === "function") onConfirm();
     }, 520);
@@ -95,39 +111,45 @@ export function revealSkillCard(skill, rarity, onConfirm) {
 }
 
 /**
- * ================================
- * 🎨 Efeitos visuais extras
- * ================================
+ * 🌿 Revela a carta da passiva
  */
-const style = document.createElement("style");
-style.textContent = `
-  @keyframes fadeIn {
-    from { opacity: 0; transform: scale(0.97); }
-    to { opacity: 1; transform: scale(1); }
-  }
+export function revealPassiveCard(passive, onConfirm) {
+  const container = document.getElementById("app");
+  container.innerHTML = `
+    <header class="game-header"><h1>RPG Arena</h1></header>
+    <main class="screen-center skill-reveal" style="animation: fadeIn 0.5s ease;">
+      <h2 class="screen-title">Nova Passiva</h2>
 
-  @keyframes fadeOut {
-    from { opacity: 1; transform: scale(1); }
-    to { opacity: 0; transform: scale(1.03); }
-  }
+      <div class="card reveal-card" style="border: 3px solid #22c55e; box-shadow: 0 0 18px #22c55e66">
+        <div class="card-inner flipped">
+          <div class="card-back" style="background:#22c55e22;">
+            <h2 style="color:#22c55e; margin-bottom:8px;">${passive.name}</h2>
+            <p style="opacity:.9">${passive.description}</p>
+          </div>
+        </div>
+      </div>
 
-  .skill-reveal h2.screen-title {
-    color: #fff;
-    text-shadow: 0 0 12px rgba(255,255,255,0.2);
-  }
+      <button id="btn-proceed" class="btn-primary">Continuar</button>
+    </main>
+  `;
 
-  .reveal-card {
-    animation: cardEnter 0.8s ease;
-  }
+  playSound("rarity-rare.mp3");
 
-  @keyframes cardEnter {
-    from { opacity: 0; transform: translateY(30px) rotateY(-10deg); }
-    to { opacity: 1; transform: translateY(0) rotateY(0); }
-  }
+  const btn = container.querySelector("#btn-proceed");
+  btn.style.opacity = "0";
+  btn.style.transition = "opacity 0.6s ease, transform 0.4s ease";
+  setTimeout(() => {
+    btn.style.opacity = "1";
+    btn.style.transform = "translateY(-4px)";
+  }, 800);
 
-  button#btn-proceed.clicked {
-    filter: brightness(1.3);
-    transform: scale(0.95);
-  }
-`;
-document.head.appendChild(style);
+  btn.addEventListener("click", () => {
+    btn.classList.add("clicked");
+    playSound("click.mp3");
+    const screen = container.querySelector(".skill-reveal");
+    if (screen) screen.style.animation = "fadeOut 0.5s forwards";
+    setTimeout(() => {
+      if (typeof onConfirm === "function") onConfirm();
+    }, 520);
+  });
+}

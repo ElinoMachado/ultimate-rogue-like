@@ -16,9 +16,26 @@ import {
 let player, enemy, currentSkill, onBattleEnd;
 let battleRunning = false;
 
-/**
- * Ponto de entrada da batalha
- */
+/** Regen passiva do JOGADOR: 5% base + bônus de passivas */
+function applyPlayerPassiveRegen(p) {
+  const hpRate = 0.05 + (p.regenHpBonus || 0);
+  const mpRate = 0.05 + (p.regenMpBonus || 0);
+
+  const heal = Math.max(0, Math.floor(p.maxHp * hpRate));
+  const mana = Math.max(0, Math.floor(p.maxMp * mpRate));
+
+  const prevHp = p.hp;
+  const prevMp = p.mp;
+
+  p.hp = Math.min(p.maxHp, p.hp + heal);
+  p.mp = Math.min(p.maxMp, p.mp + mana);
+
+  if (p.hp > prevHp || p.mp > prevMp) {
+    showFloatingText(`+${p.hp - prevHp} HP / +${p.mp - prevMp} MP`, "info");
+  }
+}
+
+/** Ponto de entrada da batalha */
 export function startBattleScene(playerEntity, skill, callback) {
   player = playerEntity;
   currentSkill = skill;
@@ -32,13 +49,12 @@ export function startBattleScene(playerEntity, skill, callback) {
   startBattleMusic(enemy);
 
   renderBattleUI(player, enemy);
+  updateBars(player, enemy);
   updateHUD(player, progression, levelSystem);
   loop();
 }
 
-/**
- * Gera inimigo com base no nível do jogador
- */
+/** Gera inimigo com base no nível do jogador */
 function createEnemyForLevel(level) {
   const template = enemies[randomInt(0, enemies.length - 1)];
   const e = new Entity(template);
@@ -51,14 +67,12 @@ function createEnemyForLevel(level) {
 
   e.name = template.name;
   e.id = template.id;
-  e.effects = []; // garante compatibilidade
-  e.level = level; // ✅ agora o nível do inimigo existe e pode ser exibido
+  e.effects = [];
+  e.level = level; // usado no header rápido do inimigo
   return e;
 }
 
-/**
- * Inicializa propriedades seguras
- */
+/** Inicializa propriedades seguras */
 function prepareEntity(ent) {
   ent.speedGauge = 0;
   ent.hp = ent.hp ?? ent.maxHp ?? 100;
@@ -69,9 +83,7 @@ function prepareEntity(ent) {
   ent.effects = ent.effects || [];
 }
 
-/**
- * BGM
- */
+/** BGM */
 function startBattleMusic(enemy) {
   let track = "battle-normal.mp3";
   if (enemy.id?.includes("skeleton")) track = "battle-ominous.mp3";
@@ -79,9 +91,7 @@ function startBattleMusic(enemy) {
   playBGM(track, 0.6, true);
 }
 
-/**
- * Loop principal
- */
+/** Loop principal */
 async function loop() {
   while (battleRunning) {
     if (checkBattleEnd()) break;
@@ -106,17 +116,13 @@ async function loop() {
   }
 }
 
-/**
- * Incrementa gauge
- */
+/** Incrementa gauge */
 function tickSpeed(ent) {
   const baseSpeed = ent.getFinalSpeed ? ent.getFinalSpeed() : ent.speed || 30;
   ent.speedGauge += baseSpeed * 0.05;
 }
 
-/**
- * Verifica fim da batalha
- */
+/** Verifica fim da batalha */
 function checkBattleEnd() {
   const over = !player.alive || !enemy.alive || player.hp <= 0 || enemy.hp <= 0;
   if (!over) return false;
@@ -140,10 +146,9 @@ function checkBattleEnd() {
   return true;
 }
 
-/**
- * Controla o turno de uma entidade
- */
+/** Controla o turno de uma entidade */
 async function handleTurn(attacker, target, isPlayerTurn) {
+  // Efeitos em início de turno
   const diedFromDot = await tickEffectsOnTurnStart(attacker);
   if (diedFromDot) {
     showFloatingText(`${attacker.name} sucumbiu a um efeito!`, "status");
@@ -152,6 +157,7 @@ async function handleTurn(attacker, target, isPlayerTurn) {
     return;
   }
 
+  // Stun cancela turno
   if (hasEffect(attacker, "stun")) {
     showFloatingText(`${attacker.name} está atordoado!`, "status");
     applyStatusVisual(attacker === player ? "player" : "enemy", "stun");
@@ -161,6 +167,10 @@ async function handleTurn(attacker, target, isPlayerTurn) {
   }
 
   if (isPlayerTurn) {
+    // Regen passiva sempre no começo do SEU turno
+    applyPlayerPassiveRegen(player);
+    updateBars(player, enemy);
+    updateHUD(player, progression, levelSystem);
     await playerTurn();
   } else {
     await enemyTurn();
@@ -170,13 +180,10 @@ async function handleTurn(attacker, target, isPlayerTurn) {
   updateHUD(player, progression, levelSystem);
 }
 
-/**
- * Turno do jogador
- */
+/** Turno do jogador */
 async function playerTurn() {
   const basicBtn = document.querySelector('.action-btn[data-action="basic"]');
   const skillBtn = document.querySelector('.action-btn[data-action="skill"]');
-
   if (!basicBtn || !skillBtn) return;
 
   updateCooldownText();
@@ -185,7 +192,7 @@ async function playerTurn() {
   skillBtn.disabled =
     !currentSkill ||
     currentSkill.cooldownCounter > 0 ||
-    player.mp < currentSkill.manaCost;
+    player.mp < Math.ceil(currentSkill.manaCost * (player.manaCostMult || 1));
 
   showFloatingText("Seu turno!", "info");
   playSound("turn-player.mp3");
@@ -212,14 +219,19 @@ async function playerTurn() {
         if (
           !currentSkill ||
           currentSkill.cooldownCounter > 0 ||
-          player.mp < currentSkill.manaCost
+          player.mp <
+            Math.ceil(currentSkill.manaCost * (player.manaCostMult || 1))
         ) {
           showFloatingText("❌ Habilidade indisponível!", "info");
           playSound("no-mana.mp3");
           return;
         }
         disable();
-        player.mp -= currentSkill.manaCost;
+        const cost = Math.ceil(
+          currentSkill.manaCost * (player.manaCostMult || 1)
+        );
+        player.mp -= cost;
+
         await attack(player, enemy, currentSkill.damage, "skill");
         currentSkill.cooldownCounter = currentSkill.cooldown;
         updateCooldownText();
@@ -266,12 +278,16 @@ async function attack(attacker, target, damage, type) {
 
   playSound(type === "skill" ? "skill-cast.mp3" : "attack-basic.mp3");
 
+  // Modificadores de buffs
   const offensive = getOffensiveModifiers(attacker);
   let dmg = (Number(damage) || 0) * (offensive.damageMultiplier ?? 1);
 
+  // Arcana em skills
   if (attacker.arcanaMultiplier && type === "skill") {
     dmg *= attacker.arcanaMultiplier;
   }
+
+  // Crítico
   const isCrit = chance((attacker.critChance ?? 0) / 100);
   if (isCrit) dmg *= attacker.critDamage || 1.5;
 
@@ -287,6 +303,7 @@ async function attack(attacker, target, damage, type) {
   updateBars(player, enemy);
   updateHUD(player, progression, levelSystem);
 
+  // Aplicação de efeitos de skill do jogador
   if (type === "skill" && attacker === player && currentSkill?.effects) {
     for (const eff of currentSkill.effects) {
       if (Math.random() <= (eff.chance ?? 1)) {

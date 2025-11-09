@@ -4,11 +4,12 @@ import { Entity } from "./core/entity.js";
 import { buffs } from "./data/buffs.js";
 import { revealBuffCard } from "./ui/animation.js";
 import { skills } from "./data/skills.js";
-import { revealSkillCard } from "./ui/skillReveal.js";
+import { revealSkillCard, revealPassiveCard } from "./ui/skillReveal.js";
 import { startBattleScene } from "./core/battle.js";
 import { progression } from "./core/progression.js";
 import { levelSystem } from "./core/level.js";
 import { renderHUD, updateHUD } from "./ui/hud.js";
+import { passives } from "./data/passives.js";
 
 // ================================
 // 🌍 ESTADO GLOBAL DA RUN
@@ -22,14 +23,19 @@ document.addEventListener("DOMContentLoaded", () => {
   showClassSelectionScreen();
 });
 
-/**
- * ================================
- * 🧪 Aplicação de Buffs no Player
- * ================================
- * Continua usando os mesmos buffs de poder / arcana / riqueza.
- */
+/* ================================
+ * 🧪 Buffs no Player (reaplicáveis sem acumular)
+ * ================================ */
 function applyBuffsToPlayer(player, buffsSelected) {
-  // --- PODER ---
+  // Sempre recalcula a partir do snapshot base
+  const base = player.base || {
+    maxHp: player.maxHp,
+    maxMp: player.maxMp,
+    speed: player.speed,
+    damage: player.damage,
+  };
+
+  // --- Poder ---
   const powerLevels = {
     1: { dmg: -0.5, hp: -0.35, speed: -0.25 },
     2: { dmg: -0.25, hp: -0.15, speed: -0.1 },
@@ -41,34 +47,38 @@ function applyBuffsToPlayer(player, buffsSelected) {
   const poderBuff = powerLevels[buffsSelected.poder?.level ?? 3];
   player.buffs.poder = poderBuff;
 
-  player.damage = Math.round(player.damage * (1 + poderBuff.dmg));
-  player.maxHp = Math.round(player.maxHp * (1 + poderBuff.hp));
-  player.hp = player.maxHp;
-  player.speed = Math.round(player.speed * (1 + poderBuff.speed));
+  player.damage = Math.round(base.damage * (1 + poderBuff.dmg));
+  player.maxHp = Math.round(base.maxHp * (1 + poderBuff.hp));
+  player.hp = Math.min(player.hp ?? player.maxHp, player.maxHp);
+  player.speed = Math.round(base.speed * (1 + poderBuff.speed));
 
-  // --- ARCANA ---
-  const arcanaLevels = {
-    1: -0.4,
-    2: -0.2,
-    3: 0.0,
-    4: 1.0,
-    5: 2.0,
-  };
-
+  // --- Arcana ---
+  const arcanaLevels = { 1: -0.4, 2: -0.2, 3: 0.0, 4: 1.0, 5: 2.0 };
   const arcanaBoost = arcanaLevels[buffsSelected.arcana?.level ?? 3];
   player.buffs.arcana = arcanaBoost;
   player.arcanaMultiplier = 1 + arcanaBoost;
 
-  // --- RIQUEZA ---
+  // --- Riqueza ---
   player.wealthBonus = buffsSelected.riqueza?.bonus ?? 0;
   player.buffs.riqueza = buffsSelected.riqueza || { bonus: 0 };
 }
 
-/**
- * ================================
+/* ================================
+ * 🔒 Congelar os valores atuais como novo "base"
+ * (chamar ao FINAL do level up)
+ * ================================ */
+function commitCurrentAsBase(player) {
+  player.base = {
+    maxHp: player.maxHp,
+    maxMp: player.maxMp,
+    speed: player.speed,
+    damage: player.damage,
+  };
+}
+
+/* ================================
  * 👤 TELA: ESCOLHA DE CLASSE
- * ================================
- */
+ * ================================ */
 function showClassSelectionScreen() {
   const app = document.getElementById("app");
 
@@ -120,11 +130,9 @@ function showClassSelectionScreen() {
   });
 }
 
-/**
- * ================================
+/* ================================
  * 📜 TELA: RESUMO DA CLASSE ESCOLHIDA
- * ================================
- */
+ * ================================ */
 function showClassSummaryScreen() {
   const app = document.getElementById("app");
   const c = selectedClass;
@@ -161,11 +169,9 @@ function showClassSummaryScreen() {
     .addEventListener("click", () => startBuffPhase());
 }
 
-/**
- * ================================
+/* ================================
  * 🎴 FASE: SORTEIO DOS BUFFS
- * ================================
- */
+ * ================================ */
 function startBuffPhase() {
   const sequence = ["riqueza", "arcana", "poder"];
   const results = {};
@@ -173,7 +179,6 @@ function startBuffPhase() {
   function nextBuffStep() {
     if (sequence.length === 0) {
       selectedBuffs = results;
-      // ⏳ Pequeno delay para evitar conflito visual
       setTimeout(() => showBuffSummary(results), 400);
       return;
     }
@@ -183,23 +188,18 @@ function startBuffPhase() {
     const randomBuff = list[Math.floor(Math.random() * list.length)];
     results[type] = randomBuff;
 
-    // Exibe carta e só chama o próximo depois da animação
     revealBuffCard(type, randomBuff, nextBuffStep);
   }
 
   nextBuffStep();
 }
 
-/**
- * ================================
+/* ================================
  * 📊 TELA: RESUMO DOS BUFFS
- * ================================
- */
+ * ================================ */
 function showBuffSummary(results) {
   const app = document.getElementById("app");
 
-  // ⚠️ A HUD só será exibida depois da tela de resumo.
-  // Antes, apenas o resumo visual dos buffs.
   applyBuffsToPlayer(playerEntity, selectedBuffs);
 
   app.innerHTML = `
@@ -218,24 +218,20 @@ function showBuffSummary(results) {
   `;
 
   document.getElementById("btn-continue").addEventListener("click", () => {
-    // só aqui renderiza a HUD
     renderHUD(playerEntity, selectedBuffs, progression, levelSystem);
     showSkillReveal();
   });
 }
 
-/**
- * ================================
- * ✨ SORTEIO E REVELAÇÃO DA SKILL INICIAL
- * ================================
- */
+/* ================================
+ * ✨ SORTEIO E REVELAÇÃO DA SKILL INICIAL + PASSIVA
+ * ================================ */
 function showSkillReveal() {
   const cls = selectedClass.id;
   const arcanaBuff = selectedBuffs.arcana;
   const skillTemplate = skills[cls][0];
 
   const rarity = getRarityFromArcana(arcanaBuff.level, playerEntity.luck);
-
   const baseData = skillTemplate.rarities[rarity];
   const arcanaBoost = selectedBuffs.arcana.bonus + 1;
 
@@ -245,18 +241,34 @@ function showSkillReveal() {
     manaCost: baseData.manaCost,
     cooldown: baseData.cooldown,
     effect: baseData.effect,
-    effects: baseData.effects || [], // ✅ integra com sistema de efeitos
+    effects: baseData.effects || [],
   };
 
   selectedSkill = { ...skill, rarity, cooldownCounter: 0 };
   playerEntity.skills = [selectedSkill];
 
-  revealSkillCard(skill, rarity, () => startBattle());
+  revealSkillCard(skill, rarity, () => showPassiveReveal());
 }
 
-/**
- * Probabilidade de raridade baseada em Arcana + Sorte (igual ao original).
- */
+function showPassiveReveal() {
+  const passive = passives[Math.floor(Math.random() * passives.length)];
+  revealPassiveCard(passive, () => {
+    applyPassiveToPlayer(playerEntity, passive);
+    startBattle();
+  });
+}
+
+function applyPassiveToPlayer(player, passive) {
+  try {
+    passive?.apply?.(player);
+  } catch (e) {
+    console.warn("Erro ao aplicar passiva:", e);
+  }
+  // hud se já estiver visível
+  updateHUD(player, progression, levelSystem);
+}
+
+/* Probabilidade de raridade baseada em Arcana + Sorte */
 function getRarityFromArcana(level, luck = 0) {
   const table = {
     1: { common: 0.5, rare: 0.4, super: 0.05, legendary: 0.04, mythic: 0.01 },
@@ -277,36 +289,28 @@ function getRarityFromArcana(level, luck = 0) {
     sum += chance;
     if (roll <= sum) return rarity;
   }
-
   return "mythic";
 }
 
-/**
- * ================================
+/* ================================
  * ⚔️ INÍCIO DA BATALHA
- * ================================
- */
+ * ================================ */
 function startBattle() {
-  const player = playerEntity;
-  const skill = selectedSkill;
-
-  startBattleScene(player, skill, (result) => showBattleEnd(result));
+  startBattleScene(playerEntity, selectedSkill, (result) =>
+    showBattleEnd(result)
+  );
 }
 
-/**
- * ================================
+/* ================================
  * 🏁 PÓS-BATALHA: VITÓRIA / DERROTA
- * ================================
- */
+ * ================================ */
 function showBattleEnd(result) {
   const app = document.getElementById("app");
   const rewards = progression.calcRewards(playerEntity, selectedBuffs);
 
   playerEntity.xp += rewards.xp;
   playerEntity.gold += rewards.gold;
-  if (rewards.drop) {
-    playerEntity.items.push(rewards.drop);
-  }
+  if (rewards.drop) playerEntity.items.push(rewards.drop);
 
   if (result === "win") {
     progression.xp += rewards.xp;
@@ -340,26 +344,109 @@ function showBattleEnd(result) {
       startBattle();
     });
   } else {
-    app.innerHTML = `
-      <header class="game-header"><h1>RPG Arena</h1></header>
-      <main class="screen-center">
-        <h2 class="screen-title">💀 Derrota...</h2>
-        <p style="margin-top:10px;">Você alcançou a fase ${progression.currentStage}.</p>
-        <button class="btn-primary" id="btn-restart">Recomeçar</button>
-      </main>
-    `;
-    document
-      .getElementById("btn-restart")
-      .addEventListener("click", () => location.reload());
+    if ((playerEntity.lives ?? 0) > 0) {
+      const vidas = playerEntity.lives;
+
+      const mkBuffChip = (key, label) => {
+        const lvl = selectedBuffs[key]?.level ?? 3;
+        const can = lvl < 5;
+        return `
+          <button class="btn-primary buff-up-btn" data-buff="${key}" ${
+          can ? "" : "disabled"
+        }>
+            ${label}: Nível ${lvl} ${can ? "→ " + (lvl + 1) : "(máx)"}
+          </button>
+        `;
+      };
+
+      app.innerHTML = `
+        <header class="game-header"><h1>RPG Arena</h1></header>
+        <main class="screen-center">
+          <h2 class="screen-title">💀 Derrota...</h2>
+          <p style="margin-top:10px;">Você alcançou a fase ${
+            progression.currentStage
+          }.</p>
+          <p style="margin-top:14px;">Você tem <strong>${vidas}</strong> vida(s).</p>
+          <p style="opacity:.85">Gaste <strong>1 vida</strong> para tentar novamente esta fase e aumentar <strong>+1 nível</strong> em um dos seus buffs:</p>
+
+          <div style="display:flex; gap:8px; flex-wrap:wrap; margin:12px 0;">
+            ${mkBuffChip("riqueza", "Riqueza")}
+            ${mkBuffChip("arcana", "Arcana")}
+            ${mkBuffChip("poder", "Poder")}
+          </div>
+
+          <div style="display:flex; gap:10px; margin-top:6px;">
+            <button class="btn-primary" id="btn-skip-retry">Desistir</button>
+          </div>
+        </main>
+      `;
+
+      app.querySelectorAll(".buff-up-btn").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          const key = btn.dataset.buff;
+          tryUpgradeBuffAndRetry(key);
+        });
+      });
+
+      document
+        .getElementById("btn-skip-retry")
+        .addEventListener("click", () => {
+          app.innerHTML = `
+          <header class="game-header"><h1>RPG Arena</h1></header>
+          <main class="screen-center">
+            <h2 class="screen-title">💀 Derrota...</h2>
+            <p style="margin-top:10px;">Você alcançou a fase ${progression.currentStage}.</p>
+            <button class="btn-primary" id="btn-restart">Recomeçar</button>
+          </main>
+        `;
+          document
+            .getElementById("btn-restart")
+            .addEventListener("click", () => location.reload());
+        });
+    } else {
+      app.innerHTML = `
+        <header class="game-header"><h1>RPG Arena</h1></header>
+        <main class="screen-center">
+          <h2 class="screen-title">💀 Derrota...</h2>
+          <p style="margin-top:10px;">Você alcançou a fase ${progression.currentStage}.</p>
+          <button class="btn-primary" id="btn-restart">Recomeçar</button>
+        </main>
+      `;
+      document
+        .getElementById("btn-restart")
+        .addEventListener("click", () => location.reload());
+    }
   }
 }
 
-/**
- * ================================
+/* Retry com +1 nível em um buff e mesma fase */
+function tryUpgradeBuffAndRetry(key) {
+  const current = selectedBuffs[key];
+  const list = buffs[key];
+  const currentLevel = current?.level ?? 3;
+  const next = list.find((b) => b.level === currentLevel + 1);
+
+  if (next) selectedBuffs[key] = next;
+
+  // reaplica buffs (sem perder upgrades de atributos)
+  applyBuffsToPlayer(playerEntity, selectedBuffs);
+
+  // restaura e consome vida
+  playerEntity.hp = playerEntity.maxHp;
+  playerEntity.mp = playerEntity.maxMp;
+  playerEntity.lives = Math.max(0, (playerEntity.lives ?? 0) - 1);
+
+  updateHUD(playerEntity, progression, levelSystem);
+  retrySameStage();
+}
+
+function retrySameStage() {
+  startBattle();
+}
+
+/* ================================
  * ⚙️ TELA DE LEVEL UP (atributos + skill)
- * ================================
- * Mantém o mesmo comportamento original, só com pequenas limpezas.
- */
+ * ================================ */
 function showLevelUpScreen() {
   const app = document.getElementById("app");
 
@@ -367,6 +454,20 @@ function showLevelUpScreen() {
   playerEntity.statPoints = remaining;
 
   let skillChoice = null; // "upgrade" | "new" | "refuse"
+
+  // helpers de rótulo com o passo exato
+  const stepTxt = (stat) => {
+    const v = levelSystem.getStep(playerEntity, stat);
+    if (stat === "critChance") return `Crítico (+${v.toFixed(1)}%)`;
+    if (stat === "critDamage")
+      return `Dano Crítico (+${(v * 100).toFixed(0)}%)`;
+    if (stat === "vida") return `Vida (+${v} HP)`;
+    if (stat === "mana") return `Mana (+${v} MP)`;
+    if (stat === "velocidade") return `Velocidade (+${v})`;
+    if (stat === "dano") return `Dano (+${v})`;
+    if (stat === "sorte") return `Sorte (+${v})`;
+    return stat;
+  };
 
   app.innerHTML = `
     <header class="game-header"><h1>RPG Arena</h1></header>
@@ -393,47 +494,18 @@ function showLevelUpScreen() {
     </main>
   `;
 
-  const pointsText = document.getElementById("points");
-  const btnContinue = document.getElementById("btn-continue");
-  const btnUpgrade = document.getElementById("btn-upgrade-skill");
-  const btnNew = document.getElementById("btn-new-skill");
-  const btnRefuse = document.getElementById("btn-refuse-skill");
-
-  // ----- Configuração dos atributos -----
   const stats = [
-    {
-      id: "vida",
-      label: `Vida (+${10 * (playerEntity.buffs.poder.hp + 1)} HP)`,
-    },
-    {
-      id: "mana",
-      label: `Mana (+${10 * (playerEntity.buffs.arcana + 1)} MP)`,
-    },
-    {
-      id: "velocidade",
-      label: `Velocidade (+${5 * (playerEntity.buffs.poder.speed + 1)})`,
-    },
-    {
-      id: "dano",
-      label: `Dano (+${3 * (playerEntity.buffs.poder.dmg + 1)})`,
-    },
-    {
-      id: "sorte",
-      label: `Sorte (+${2 * (playerEntity.wealthBonus + 1)})`,
-    },
-    {
-      id: "critChance",
-      label: `Crítico (+${1 * (playerEntity.wealthBonus + 1)}%)`,
-    },
-    {
-      id: "critDamage",
-      label: `Dano Crítico (+${10 * (playerEntity.wealthBonus + 1)}%)`,
-    },
+    { id: "vida", label: stepTxt("vida") },
+    { id: "mana", label: stepTxt("mana") },
+    { id: "velocidade", label: stepTxt("velocidade") },
+    { id: "dano", label: stepTxt("dano") },
+    { id: "sorte", label: stepTxt("sorte") },
+    { id: "critChance", label: stepTxt("critChance") },
+    { id: "critDamage", label: stepTxt("critDamage") },
   ];
 
   const statContainer = document.querySelector(".stat-buttons");
-  const spent = {};
-  stats.forEach((s) => (spent[s.id] = 0));
+  const spent = Object.fromEntries(stats.map((s) => [s.id, 0]));
 
   statContainer.innerHTML = stats
     .map(
@@ -447,56 +519,21 @@ function showLevelUpScreen() {
     )
     .join("");
 
+  const pointsText = document.getElementById("points");
+  const btnContinue = document.getElementById("btn-continue");
+  const btnUpgrade = document.getElementById("btn-upgrade-skill");
+  const btnNew = document.getElementById("btn-new-skill");
+  const btnRefuse = document.getElementById("btn-refuse-skill");
+
+  // liga os botões +/− com aplicação e reversão exatas
   statContainer.querySelectorAll(".stat-row").forEach((row) => {
     const stat = row.dataset.stat;
     const plus = row.querySelector(".btn-plus");
     const minus = row.querySelector(".btn-minus");
     const count = row.querySelector(`#count-${stat}`);
 
-    const step = {
-      vida: () => 10 * (1 + (playerEntity.buffs.poder.hp ?? 0)),
-      mana: () => 10 * (1 + (playerEntity.buffs.arcana ?? 0)),
-      velocidade: () => 5 * (1 + (playerEntity.buffs.poder.speed ?? 0)),
-      dano: () => 3 * (1 + (playerEntity.buffs.poder.dmg ?? 0)),
-      sorte: () => 2 * (1 + (playerEntity.wealthBonus ?? 0)),
-      critChance: () => 1,
-      critDamage: () => 0.1,
-    };
-
-    function revertOne(statId) {
-      const s = step[statId]?.();
-      if (s == null) return;
-
-      switch (statId) {
-        case "vida":
-          playerEntity.maxHp = Math.max(1, playerEntity.maxHp - s);
-          playerEntity.hp = Math.min(playerEntity.hp, playerEntity.maxHp);
-          break;
-        case "mana":
-          playerEntity.maxMp = Math.max(0, playerEntity.maxMp - s);
-          playerEntity.mp = Math.min(playerEntity.mp, playerEntity.maxMp);
-          break;
-        case "velocidade":
-          playerEntity.speed = Math.max(1, playerEntity.speed - s);
-          break;
-        case "dano":
-          playerEntity.damage = Math.max(0, playerEntity.damage - s);
-          break;
-        case "sorte":
-          playerEntity.luck = Math.max(0, playerEntity.luck - s);
-          break;
-        case "critChance":
-          playerEntity.critChance = Math.max(0, playerEntity.critChance - s);
-          break;
-        case "critDamage":
-          playerEntity.critDamage = Math.max(0, playerEntity.critDamage - s);
-          break;
-      }
-    }
-
     plus.addEventListener("click", () => {
       if (remaining <= 0) return;
-      // aplica via sistema (mantém efeitos e sons)
       levelSystem.applyStat(playerEntity, stat);
       remaining--;
       spent[stat]++;
@@ -504,28 +541,20 @@ function showLevelUpScreen() {
       pointsText.textContent = remaining;
       count.textContent = spent[stat];
 
-      // 🔄 HUD em tempo real
       updateHUD(playerEntity, progression, levelSystem);
-
       checkCanContinue();
     });
 
     minus.addEventListener("click", () => {
       if (spent[stat] <= 0) return;
-
-      // desfaz UM ponto investido nesse atributo
+      levelSystem.revertStat(playerEntity, stat);
       spent[stat]--;
       remaining++;
       playerEntity.statPoints = remaining;
       pointsText.textContent = remaining;
       count.textContent = spent[stat];
 
-      // reverte os valores no player
-      revertOne(stat);
-
-      // 🔄 HUD em tempo real
       updateHUD(playerEntity, progression, levelSystem);
-
       checkCanContinue();
     });
   });
@@ -558,30 +587,25 @@ function showLevelUpScreen() {
   });
 
   function checkCanContinue() {
-    if (remaining === 0 && skillChoice) {
-      btnContinue.disabled = false;
-    } else {
-      btnContinue.disabled = true;
-    }
+    if (remaining === 0 && skillChoice) btnContinue.disabled = false;
+    else btnContinue.disabled = true;
   }
 
   btnContinue.addEventListener("click", () => {
     if (skillChoice === "upgrade") {
       upgradeCurrentSkill();
-      progression.nextStage();
-      startBattle();
-    } else if (skillChoice === "refuse") {
-      progression.nextStage();
-      startBattle();
     } else if (skillChoice === "new") {
-      showNewSkillCards();
+      return showNewSkillCards(); // a própria escolha já chama startBattle
     }
+    // refuse ou upgrade: segue direto
+    // congela como base para não perder upgrades em reaplicação de buffs
+    commitCurrentAsBase(playerEntity);
+    progression.nextStage();
+    startBattle();
   });
 }
 
-/**
- * Upa a skill atual — mesma lógica original, só organizada.
- */
+/** Upa a skill atual */
 function upgradeCurrentSkill() {
   if (!selectedSkill && playerEntity.skills?.length) {
     selectedSkill = playerEntity.skills[0];
@@ -590,9 +614,7 @@ function upgradeCurrentSkill() {
 
   selectedSkill.level = (selectedSkill.level || 1) + 1;
   selectedSkill.damage = Math.round(selectedSkill.damage * 1.2);
-  if (selectedSkill.cooldown > 1) {
-    selectedSkill.cooldown -= 1;
-  }
+  if (selectedSkill.cooldown > 1) selectedSkill.cooldown -= 1;
   selectedSkill.cooldownCounter = 0;
 
   playerEntity.skills[0] = selectedSkill;
@@ -603,11 +625,9 @@ function highlightSkillChoice(activeBtn, others) {
   others.forEach((b) => b.classList.remove("skill-choice-active"));
 }
 
-/**
- * ================================
+/* ================================
  * 🧠 ESCOLHA DE NOVA HABILIDADE (3 CARTAS)
- * ================================
- */
+ * ================================ */
 function showNewSkillCards() {
   const app = document.getElementById("app");
   const clsId = selectedClass.id;
@@ -660,6 +680,9 @@ function showNewSkillCards() {
       const chosen = options[idx];
       selectedSkill = chosen;
       playerEntity.skills[0] = chosen;
+
+      // congela upgrades atuais como base antes de seguir
+      commitCurrentAsBase(playerEntity);
       progression.nextStage();
       startBattle();
     });
@@ -679,7 +702,7 @@ function createSkillFromTemplate(template, arcanaLevel) {
     manaCost: baseData.manaCost,
     cooldown: baseData.cooldown,
     effect: baseData.effect,
-    effects: baseData.effects || [], // ✅ integra efeitos também no level up
+    effects: baseData.effects || [],
     cooldownCounter: 0,
     level: 1,
   };
