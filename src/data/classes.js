@@ -6,10 +6,10 @@ export const classes = [
     role: "Frontline",
     description: "Tanque resistente com alto dano físico e boa sobrevivência.",
     baseStats: {
-      maxHp: 1,
+      maxHp: 130,
       maxMp: 40,
       speed: 30,
-      damage: 1500,
+      damage: 15,
       luck: 5,
       critChance: 10,
       critDamage: 1.5,

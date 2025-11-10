@@ -129,7 +129,6 @@ export function revealPassiveCard(passive, onConfirm) {
   <p><strong>Raridade:</strong> ${(
     passive.rarity || "common"
   ).toUpperCase()}</p>
-  <p><strong>Nível:</strong> ${passive.level ?? 1}</p>
   <p style="opacity:.9">${passive.description || "—"}</p>
 </div>
 

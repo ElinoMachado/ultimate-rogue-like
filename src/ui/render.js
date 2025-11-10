@@ -1,6 +1,55 @@
 // src/ui/render.js
 import { progression } from "../core/progression.js";
 
+// ── Fila de textos flutuantes por lado (player/enemy)
+const _floatQueues = { player: [], enemy: [] };
+const _floatBusy = { player: false, enemy: false };
+
+function _processFloatQueue(side) {
+  if (_floatBusy[side]) return;
+  const parent =
+    document.querySelector(
+      side === "player" ? ".entity.player" : ".entity.enemy"
+    ) || document.body;
+  const next = _floatQueues[side].shift();
+  if (!next) return; // nada a mostrar
+
+  _floatBusy[side] = true;
+  const div = document.createElement("div");
+  // usa a animação CSS existente (floatUp) e força posicionamento absoluto no card
+  div.className = `floating-${next.type} floating-anchored`;
+  div.textContent = next.text;
+  parent.appendChild(div);
+
+  // ✅ fallback por tempo: solta a fila mesmo se 'animationend' não vier
+  let fallbackTimer = null;
+
+  const done = () => {
+    if (fallbackTimer) {
+      clearTimeout(fallbackTimer);
+      fallbackTimer = null;
+    }
+    div.removeEventListener("animationend", done);
+    div.remove();
+    _floatBusy[side] = false;
+    // pequeno intervalo para leitura quando há muitos eventos
+    setTimeout(() => _processFloatQueue(side), 100);
+  };
+
+  div.addEventListener("animationend", done);
+
+  try {
+    const cs = getComputedStyle(div);
+    // pode ser "3.6s" ou "360ms"
+    const raw = cs.animationDuration || "1.2s";
+    const num = parseFloat(raw) || 1.2;
+    const ms = /ms/i.test(raw) ? num : num * 1000;
+    fallbackTimer = setTimeout(done, ms + 120);
+  } catch {
+    fallbackTimer = setTimeout(done, 1500);
+  }
+}
+
 /* ================================
    🎨 Estilo injetado (não altera arena/entidades)
    ================================ */
@@ -8,7 +57,7 @@ if (!document.getElementById("battle-ui-polish")) {
   const style = document.createElement("style");
   style.id = "battle-ui-polish";
   style.textContent = `
-    /* ====== Battle Meta (Fase + Recompensa) ====== */
+    /* ====== Battle Meta (Fase  Recompensa) ====== */
     .battle-meta{
       display:flex; justify-content:space-between; align-items:center;
       gap:12px; padding:10px 14px; margin:8px 12px 0;
@@ -40,7 +89,7 @@ if (!document.getElementById("battle-ui-polish")) {
       border-color:#ffcc0044;
     }
 
-    /* Bônus (+ / -) destacado ao lado do valor fixo */
+    /* Bônus ( / -) destacado ao lado do valor fixo */
     .bonus{
       display:inline-flex; align-items:center; gap:6px;
       padding:2px 8px; border-radius:999px; font-weight:700;
@@ -108,13 +157,13 @@ export function renderBattleUI(player, enemy) {
         <span class="chip chip-xp">
           ⭐ XP <strong>${fixed.xpTotal}</strong>
           <span class="bonus ${fixed.xpBonus >= 0 ? "positive" : "negative"}">
-            (${fixed.xpBonus >= 0 ? "+" : ""}${fixed.xpBonus})
+            (${fixed.xpBonus >= 0 ? "" : ""}${fixed.xpBonus})
           </span>
         </span>
         <span class="chip chip-gold">
           💰 Gold <strong>${fixed.goldTotal}</strong>
           <span class="bonus ${fixed.goldBonus >= 0 ? "positive" : "negative"}">
-            (${fixed.goldBonus >= 0 ? "+" : ""}${fixed.goldBonus})
+            (${fixed.goldBonus >= 0 ? "" : ""}${fixed.goldBonus})
           </span>
         </span>
       </div>
@@ -145,12 +194,20 @@ export function updateBars(player, enemy) {
 /**
  * Mostra texto flutuante (dano, status etc.)
  */
-export function showFloatingText(text, type = "damage") {
+// Agora aceita um 3º argumento opcional: side = "player" | "enemy"
+export function showFloatingText(text, type = "damage", side = null) {
+  // Se informar o lado, usa a fila e ancora sobre o card correspondente
+  //todo: problema do floating travando ta aqui
+  if (side === "player" || side === "enemy") {
+    _floatQueues[side].push({ text, type });
+    _processFloatQueue(side);
+    return;
+  }
+  // Comportamento antigo (central) continua igual
   const div = document.createElement("div");
   div.className = `floating-${type}`;
   div.textContent = text;
   document.body.appendChild(div);
-
   div.animate(
     [
       { transform: "translateY(0)", opacity: 1 },
@@ -158,7 +215,6 @@ export function showFloatingText(text, type = "damage") {
     ],
     { duration: 1200, easing: "ease-out" }
   );
-
   setTimeout(() => div.remove(), 1200);
 }
 
@@ -200,12 +256,10 @@ function renderEntity(type, entity) {
 }
 function renderPassiveCard(passive) {
   const rarityText = (passive.rarity || "common").toString().toUpperCase();
-  const levelText = passive.level != null ? passive.level : 1;
   return `
     <div class="skill-info-card" style="right:16px; left:auto;">
       <h3>${passive.name}</h3>
       <p><strong>Raridade:</strong> ${rarityText}</p>
-      <p><strong>Nível:</strong> ${levelText}</p>
       <p><strong>Tipo:</strong> Passiva</p>
       <p><strong>Efeito:</strong> ${passive.description || "—"}</p>
     </div>

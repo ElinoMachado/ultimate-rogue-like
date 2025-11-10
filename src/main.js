@@ -267,8 +267,9 @@ function showPassiveReveal() {
   );
 
   const selectedPassive = {
-    ...base,
-    level: 1, // ✅ nível inicial
+    id: base.id,
+    name: base.name,
+    ...base[rarity],
     rarity, // ✅ raridade para exibição
   };
 

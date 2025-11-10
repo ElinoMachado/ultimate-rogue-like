@@ -187,14 +187,12 @@ async function playerTurn() {
   if (!basicBtn || !skillBtn) return;
 
   updateCooldownText();
-
-  basicBtn.disabled = false;
-  skillBtn.disabled =
+  let skillDisabled =
     !currentSkill ||
     currentSkill.cooldownCounter > 0 ||
     player.mp < Math.ceil(currentSkill.manaCost * (player.manaCostMult || 1));
-
-  showFloatingText("Seu turno!", "info");
+  basicBtn.disabled = false;
+  skillBtn.disabled = skillDisabled;
   playSound("turn-player.mp3");
 
   return new Promise((resolve) => {
@@ -216,12 +214,7 @@ async function playerTurn() {
     skillBtn.addEventListener(
       "click",
       async () => {
-        if (
-          !currentSkill ||
-          currentSkill.cooldownCounter > 0 ||
-          player.mp <
-            Math.ceil(currentSkill.manaCost * (player.manaCostMult || 1))
-        ) {
+        if (skillDisabled) {
           showFloatingText("❌ Habilidade indisponível!", "info");
           playSound("no-mana.mp3");
           return;
@@ -295,7 +288,11 @@ async function attack(attacker, target, damage, type) {
   target.hp = Math.max(0, target.hp - dmg);
   if (target.hp <= 0) target.alive = false;
 
-  showFloatingText(`${dmg}${isCrit ? " CRIT!" : ""}`, "damage");
+  showFloatingText(
+    `${dmg}${isCrit ? " CRIT!" : ""}`,
+    "damage",
+    target === player ? "player" : "enemy"
+  );
   const side = target === player ? "player" : "enemy";
   shakeEntity(side, isCrit);
   applyHitFlash(side, isCrit);
